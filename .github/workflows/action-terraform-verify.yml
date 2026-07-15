@@ -7,7 +7,6 @@ on:
       - master
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
@@ -19,13 +18,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
-
-      - name: Fetch changed files
-        id: pr_files
-        uses: jitterbit/get-changed-files@v1
-        with:
-          format: "space-delimited"
+          fetch-depth: 0
 
       - name: Configure Terraform
         uses: hashicorp/setup-terraform@v3
@@ -33,17 +26,22 @@ jobs:
           terraform_version: 1.2.4
 
       - name: Validate Terraform formatting
+        shell: bash
         run: |
           CHECK_STATUS=0
 
-          for changed_file in ${{ steps.pr_files.outputs.added_modified }}; do
-            echo "Checking Terraform formatting on ${changed_file}..."
+          CHANGED_FILES=$(git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}")
 
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          for changed_file in $CHANGED_FILES; do
             if [[ "$changed_file" == *.tf ]]; then
-              terraform fmt -check "$changed_file"
-              FMT_STATUS=$?
+              echo "Checking Terraform formatting on ${changed_file}..."
 
-              if [[ $FMT_STATUS -ne 0 ]]; then
+              if ! terraform fmt -check "$changed_file"; then
                 echo "❌ terraform fmt failed - ${changed_file}" >> "$GITHUB_STEP_SUMMARY"
                 CHECK_STATUS=1
               else
